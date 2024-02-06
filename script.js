@@ -29,6 +29,7 @@ function newInputField(key, value) {
     const fieldId = key;
     const template = `
 <div class="input-group">
+    <label class="col-sm-3 col-form-label" for="${fieldId}">${fieldId}</label>
     <input type="text" class="form-control" id="${fieldId}" readonly="true" value="${value}"/>
     <span class="input-group-btn">
         <button class="btn btn-default" type="button" onclick="remove('${key}')"><i
@@ -56,11 +57,10 @@ function insert() {
 }
 
 function remove(key) {
-    const fieldId = fieldIdGenerator(key);
     removeLocalStorage(key);
     removeOldSeriesFromChart(key);
     removeDataSeries(key);
-    $(`#${fieldId}`).parent().remove();
+    $(`#${key}`).parent().remove();
     removeDataSeries(key);
     console.log("- @", key);
 }
@@ -253,7 +253,7 @@ function findSeriesIndexByName(seriesName) {
             return i;
         }
     }
-    // Return -1 if the series with the specified name is not found
+    console.error('Did not find series', seriesName);
     return undefined;
 }
 

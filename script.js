@@ -2,12 +2,19 @@ $(document).ready(function () {
     console.log("ready!");
     // clear or populate local storage
     clearLocalStorage();
+    window.chart = Highcharts.stockChart('charts', {
+        title: {
+            text: 'Monitors'
+        },
+        series: []
+    });
+    
 });
 
 const data = {};
 
 function fieldIdGenerator(key) {
-    return `jolokiaInput_${key}`
+    return `jolokiaMonitorURL_${key}`
 }
 
 function isValidUrl(url) {
@@ -19,7 +26,7 @@ function isValidUrl(url) {
 }
 
 function newInputField(key, value) {
-    const fieldId = fieldIdGenerator(key);
+    const fieldId = key;
     const template = `
 <div class="input-group">
     <input type="text" class="form-control" id="${fieldId}" readonly="true" value="${value}"/>
@@ -41,6 +48,7 @@ function insert() {
         $('#jolokies').append(newInput);
         $('#jolokiaInput').val('');
         insertDataSeries(key);
+        insertNewSeriesToChart(key);
         console.log("+", inputValue);
     } else {
         console.log("Invalid URL!");
@@ -50,6 +58,7 @@ function insert() {
 function remove(key) {
     const fieldId = fieldIdGenerator(key);
     removeLocalStorage(key);
+    removeOldSeriesFromChart(key);
     removeDataSeries(key);
     $(`#${fieldId}`).parent().remove();
     removeDataSeries(key);
@@ -69,7 +78,7 @@ function clearLocalStorage() {
 var globalIndex = 1;
 
 function insertLocalStorage(value) {
-    const key = `jf_${globalIndex++}`;
+    const key = fieldIdGenerator(globalIndex++);
     // Retrieve the existing Map from local storage or create a new one
     const existingMap = getMapFromLocalStorage();
 
@@ -134,4 +143,144 @@ function removeDataSeries(name) {
         // Remove the object with the specified name
         delete data[name];
     }
+}
+
+async function fetchData(url) {
+    const response = await fetch(url);
+    const data = await response.json();
+    return data;
+}
+
+async function makeConcurrentRequests() {
+    const matchedInputs = $('input[id^="jolokiaMonitorURL_"]');
+    const requests = new Map();
+
+    matchedInputs.each(function () {
+        const inputValue = $(this).val();
+        const idKey = $(this).attr('id');
+        const request = fetchData(inputValue);
+        requests.set(idKey, request);
+    });
+
+    try {
+        // Wait for all promises to resolve
+        await Promise.all(requests.values());
+
+        // Access results using the input values as keys
+        requests.forEach((request, inputId) => {
+            request.then(response => {
+                //console.log(`Result for ${inputId}:`, response);
+                // Direct JMX jolokia => get data from response.value
+                let expectedFormatValue = response.value || null;
+                if (expectedFormatValue) {
+                    let time = Date.now() / 1000 * 1000;
+                    series = findDataSeries(inputId);
+                    series.push([time, expectedFormatValue]);
+                    if (window.chart) {
+                        let seriesIndex = findSeriesIndexByName(inputId);
+                        window.chart.series[seriesIndex].setData(series, true);
+                    }
+                }
+                //console.log(data, inputId, series)
+            })
+        });
+    } catch (error) {
+        console.error('Error:', error);
+    }
+}
+
+async function monitor() {
+    await makeConcurrentRequests();
+}
+
+var controller = new AbortController();
+controller.abort();
+interval = 0;
+
+function play() {
+    const secs = parseInt($('#schedulerInterval').val()) || 10;
+    // Low accuracy: setInterval(() => monitor(), 1000 * interval);
+    interval = 1000 * secs;
+    if (controller.signal.aborted === true) {
+        controller = new AbortController();
+        accurateInterval(interval, controller.signal, time => {
+            monitor();
+        });
+        toast("Monitoring started!");
+    }
+}
+
+function stop() {
+    controller.abort();
+    toast("Monitoring stopped!");
+}
+
+function reset() {
+    Object.keys(data).forEach(key => {
+        data[key] = [];
+    });
+    window.chart.series.forEach(series => {
+        series.setData([], true, false);
+    });
+    window.chart.redraw();
+    toast("Reset!");
+}
+
+// from: https://stackoverflow.com/a/66011886
+function accurateInterval(ms, signal, callback) {
+    const start = document.timeline.currentTime;
+
+    function frame(time) {
+        if (signal.aborted) return;
+        callback(time);
+        scheduleFrame(time);
+    }
+
+    function scheduleFrame(time) {
+        const elapsed = time - start;
+        const roundedElapsed = Math.round(elapsed / ms) * ms;
+        const targetNext = start + roundedElapsed + ms;
+        const delay = targetNext - performance.now();
+        setTimeout(() => requestAnimationFrame(frame), delay);
+    }
+
+    scheduleFrame(start);
+}
+
+function findSeriesIndexByName(seriesName) {
+    for (var i = 0; i < window.chart.series.length; i++) {
+        if (window.chart.series[i].name === seriesName) {
+            return i;
+        }
+    }
+    // Return -1 if the series with the specified name is not found
+    return undefined;
+}
+
+function insertNewSeriesToChart(seriesName) {
+    window.chart.addSeries({
+        name: seriesName,
+        data: []
+    });
+}
+
+function removeOldSeriesFromChart(seriesName) {
+    var seriesIndex = findSeriesIndexByName(seriesName);
+
+    if (seriesIndex !== -1) {
+        window.chart.series[seriesIndex].remove();
+    }
+}
+
+function toast(msg) {
+    window.Toastify({
+          text: msg,
+        gravity: "top",
+        position: 'center',
+        style: {
+            color: '#ffffff',
+            background: '#000000'
+        },
+        onClick: function(){} // Callback after click
+    }).showToast();
 }

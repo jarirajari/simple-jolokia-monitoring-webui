@@ -8,7 +8,7 @@ $(document).ready(function () {
         },
         series: []
     });
-    
+
 });
 
 const data = {};
@@ -27,10 +27,16 @@ function isValidUrl(url) {
 
 function newInputField(key, value) {
     const fieldId = key;
+    const toggleId = `toggle_${key}`;
     const template = `
+    
 <div class="input-group">
+<div class="form-check form-switch" >
+<input class="form-check-input" style="position: absolute; top: 20%;" id="${toggleId}" type="checkbox" role="switch" onclick="toggle('${fieldId}')" checked>
+</div>
     <label class="col-sm-3 col-form-label" for="${fieldId}">${fieldId}</label>
     <input type="text" class="form-control" id="${fieldId}" readonly="true" value="${value}"/>
+    
     <span class="input-group-btn">
         <button class="btn btn-default" type="button" onclick="remove('${key}')"><i
                 class="bi bi-dash-circle"></i></button>
@@ -38,6 +44,16 @@ function newInputField(key, value) {
 </div>
 `
     return template;
+}
+
+function toggle(checkboxId) {
+    const toggleId = `#toggle_${checkboxId}`;
+    const checked = $(toggleId).is(':checked');
+    const chartIndex = findSeriesIndexByName(checkboxId) ;
+    if (chartIndex >= 0) {
+        window.chart.series[chartIndex].setVisible(checked);
+    }
+    //console.log(checkboxId, chartIndex, checked);
 }
 
 function insert() {
@@ -274,13 +290,14 @@ function removeOldSeriesFromChart(seriesName) {
 
 function toast(msg) {
     window.Toastify({
-          text: msg,
+        text: msg,
         gravity: "top",
         position: 'center',
         style: {
             color: '#ffffff',
             background: '#000000'
         },
-        onClick: function(){} // Callback after click
+        onClick: function () { } // Callback after click
     }).showToast();
 }
+
